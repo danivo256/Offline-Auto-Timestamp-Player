@@ -26,38 +26,58 @@ input, textarea, button {
 
 textarea { min-height:110px; }
 
+#videoBox {
+  position:relative;
+  margin-top:10px;
+}
+
 #video {
   width:100%;
-  margin-top:10px;
   background:#000;
 }
 
-/* ✅ GRID LIKE YOUR IMAGE */
+/* floating controls */
+.ctrl {
+  position:absolute;
+  top:10px;
+  padding:6px 10px;
+  background:rgba(0,0,0,0.7);
+  color:#00e5ff;
+  border:1px solid #00e5ff;
+  border-radius:6px;
+  font-size:14px;
+  cursor:pointer;
+  z-index:5;
+}
+#prevBtn { left:10px; }
+#nextBtn { right:10px; }
+
+/* grid like your image */
 #buttons {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px;
-  margin-top: 12px;
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+  gap:8px;
+  margin-top:12px;
 }
 
 .rangeBtn {
-  background: #0a0a0a;
-  color: #ddd;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 8px 6px;
-  font-size: 13px;
-  text-align: center;
-  white-space: nowrap;
+  background:#0a0a0a;
+  color:#ddd;
+  border:1px solid #444;
+  border-radius:4px;
+  padding:8px 6px;
+  font-size:13px;
+  text-align:center;
+  white-space:nowrap;
   cursor:pointer;
 }
 
 .rangeBtn.active {
-  background: #00e5ff;
-  color: #000;
-  font-weight: bold;
-  border: 2px solid #fff;
-  box-shadow: 0 0 12px #00e5ff;
+  background:#00e5ff;
+  color:#000;
+  font-weight:bold;
+  border:2px solid #fff;
+  box-shadow:0 0 12px #00e5ff;
 }
 
 .historyItem {
@@ -82,7 +102,11 @@ textarea { min-height:110px; }
 
 <button onclick="loadVideo()">Load Video</button>
 
-<video id="video" controls></video>
+<div id="videoBox">
+  <video id="video" controls></video>
+  <div class="ctrl" id="prevBtn" onclick="prevSegment()">⏮</div>
+  <div class="ctrl" id="nextBtn" onclick="nextSegment()">⏭</div>
+</div>
 
 <div id="buttons"></div>
 
@@ -97,12 +121,12 @@ let fileName = "";
 
 /* ---------- CORE ---------- */
 
-function toSeconds(t) {
-  let p = t.trim().split(":").map(Number);
-  return p[0]*3600 + p[1]*60 + p[2];
+function toSeconds(t){
+  let p=t.trim().split(":").map(Number);
+  return p[0]*3600+p[1]*60+p[2];
 }
 
-function clearHighlight() {
+function clearHighlight(){
   document.querySelectorAll(".rangeBtn").forEach(b=>b.classList.remove("active"));
 }
 
@@ -113,12 +137,12 @@ function highlight(i){
 }
 
 function loadVideo(){
-  let file = document.getElementById("fileInput").files[0];
+  let file=document.getElementById("fileInput").files[0];
   if(!file){ alert("Select a video file"); return; }
 
-  fileName = file.name;
-  video.src = URL.createObjectURL(file);
-  video.playbackRate = 2;
+  fileName=file.name;
+  video.src=URL.createObjectURL(file);
+  video.playbackRate=2;
 
   segments=[];
   index=-1;
@@ -131,6 +155,7 @@ function loadVideo(){
   });
 
   makeButtons();
+  restoreLastState();
   saveHistory();
 }
 
@@ -152,26 +177,65 @@ function playFrom(i){
 }
 
 function playCurrent(){
-  if(index<0 || index>=segments.length) return;
-
+  if(index<0||index>=segments.length) return;
   highlight(index);
   video.playbackRate=2;
   video.currentTime=segments[index][0];
   video.play();
 }
 
-/* ✅ RELIABLE SEGMENT CONTROL */
-video.addEventListener("timeupdate", ()=>{
-  if(index<0 || index>=segments.length) return;
-
-  if(video.currentTime >= segments[index][1]){
+/* auto continue */
+video.addEventListener("timeupdate",()=>{
+  saveProgress();
+  if(index<0||index>=segments.length) return;
+  if(video.currentTime>=segments[index][1]){
     video.pause();
     index++;
-    if(index < segments.length){
-      setTimeout(playCurrent, 200);
+    if(index<segments.length){
+      setTimeout(playCurrent,200);
     }
   }
 });
+
+/* ---------- FLOAT CONTROLS ---------- */
+
+function prevSegment(){
+  if(index>0){
+    index--;
+    playCurrent();
+  }
+}
+
+function nextSegment(){
+  if(index<segments.length-1){
+    index++;
+    playCurrent();
+  }
+}
+
+/* ---------- RESUME SYSTEM ---------- */
+
+function saveProgress(){
+  if(!fileName) return;
+  localStorage.setItem("offline_last_state",JSON.stringify({
+    name:fileName,
+    time:video.currentTime,
+    index:index,
+    ranges:document.getElementById("ranges").value.trim()
+  }));
+}
+
+function restoreLastState(){
+  let data=JSON.parse(localStorage.getItem("offline_last_state")||"null");
+  if(!data) return;
+  if(data.name!==fileName) return;
+
+  document.getElementById("ranges").value=data.ranges;
+  index=data.index;
+  highlight(index);
+
+  video.currentTime=data.time;
+}
 
 /* ---------- HISTORY ---------- */
 
