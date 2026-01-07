@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Offline Timestamp Player</title>
+
+<style>
+body {
+  margin:0;
+  padding:12px;
+  background:#000;
+  color:#fff;
+  font-family:Arial, sans-serif;
+}
+
+h3 { color:#00e5ff; margin-top:16px; }
+
+input, textarea, button {
+  width:100%;
+  margin:6px 0;
+  padding:8px;
+  background:#000;
+  color:#fff;
+  border:1px solid #333;
+}
+
+textarea { min-height:110px; }
+
+#video {
+  width:100%;
+  margin-top:10px;
+  background:#000;
+}
+
+/* ✅ GRID LIKE YOUR IMAGE */
+#buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.rangeBtn {
+  background: #0a0a0a;
+  color: #ddd;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 8px 6px;
+  font-size: 13px;
+  text-align: center;
+  white-space: nowrap;
+  cursor:pointer;
+}
+
+.rangeBtn.active {
+  background: #00e5ff;
+  color: #000;
+  font-weight: bold;
+  border: 2px solid #fff;
+  box-shadow: 0 0 12px #00e5ff;
+}
+
+.historyItem {
+  margin-top:6px;
+  padding:8px;
+  border:1px solid #222;
+  background:#050505;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<h3>Offline Timestamp Player</h3>
+
+<input type="file" id="fileInput" accept="video/*">
+
+<textarea id="ranges" placeholder=
+"00:00:00 - 00:05:00
+00:06:00 - 00:10:00"></textarea>
+
+<button onclick="loadVideo()">Load Video</button>
+
+<video id="video" controls></video>
+
+<div id="buttons"></div>
+
+<h3>History</h3>
+<div id="history"></div>
+
+<script>
+let video = document.getElementById("video");
+let segments = [];
+let index = -1;
+let fileName = "";
+
+/* ---------- CORE ---------- */
+
+function toSeconds(t) {
+  let p = t.trim().split(":").map(Number);
+  return p[0]*3600 + p[1]*60 + p[2];
+}
+
+function clearHighlight() {
+  document.querySelectorAll(".rangeBtn").forEach(b=>b.classList.remove("active"));
+}
+
+function highlight(i){
+  clearHighlight();
+  let b=document.querySelectorAll(".rangeBtn")[i];
+  if(b) b.classList.add("active");
+}
+
+function loadVideo(){
+  let file = document.getElementById("fileInput").files[0];
+  if(!file){ alert("Select a video file"); return; }
+
+  fileName = file.name;
+  video.src = URL.createObjectURL(file);
+  video.playbackRate = 2;
+
+  segments=[];
+  index=-1;
+
+  let lines=document.getElementById("ranges").value.trim().split("\n");
+  lines.forEach(l=>{
+    if(!l.includes("-")) return;
+    let p=l.split("-");
+    segments.push([toSeconds(p[0]),toSeconds(p[1]),l.trim()]);
+  });
+
+  makeButtons();
+  saveHistory();
+}
+
+function makeButtons(){
+  let box=document.getElementById("buttons");
+  box.innerHTML="";
+  segments.forEach((s,i)=>{
+    let b=document.createElement("button");
+    b.className="rangeBtn";
+    b.textContent=s[2];
+    b.onclick=()=>playFrom(i);
+    box.appendChild(b);
+  });
+}
+
+function playFrom(i){
+  index=i;
+  playCurrent();
+}
+
+function playCurrent(){
+  if(index<0 || index>=segments.length) return;
+
+  highlight(index);
+  video.playbackRate=2;
+  video.currentTime=segments[index][0];
+  video.play();
+}
+
+/* ✅ RELIABLE SEGMENT CONTROL */
+video.addEventListener("timeupdate", ()=>{
+  if(index<0 || index>=segments.length) return;
+
+  if(video.currentTime >= segments[index][1]){
+    video.pause();
+    index++;
+    if(index < segments.length){
+      setTimeout(playCurrent, 200);
+    }
+  }
+});
+
+/* ---------- HISTORY ---------- */
+
+function saveHistory(){
+  let ranges=document.getElementById("ranges").value.trim();
+  if(!ranges) return;
+
+  let data=JSON.parse(localStorage.getItem("offline_ts")||"[]");
+  data=data.filter(d=>!(d.name===fileName && d.ranges===ranges));
+  data.unshift({name:fileName,ranges:ranges,time:Date.now()});
+  if(data.length>15) data.length=15;
+
+  localStorage.setItem("offline_ts",JSON.stringify(data));
+  renderHistory();
+}
+
+function renderHistory(){
+  let box=document.getElementById("history");
+  box.innerHTML="";
+  let data=JSON.parse(localStorage.getItem("offline_ts")||"[]");
+
+  data.forEach(d=>{
+    let div=document.createElement("div");
+    div.className="historyItem";
+    div.innerHTML="<b>"+d.name+"</b><br><small>Tap → then select same file again</small>";
+    div.onclick=()=>{
+      document.getElementById("ranges").value=d.ranges;
+      alert("Now select the same video file again");
+    };
+    box.appendChild(div);
+  });
+}
+
+renderHistory();
+</script>
+
+</body>
+</html>
