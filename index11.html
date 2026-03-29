@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Offline Timestamp Player</title>
+
+<style>
+body {
+  margin:0;
+  padding:12px;
+  background:#000;
+  color:#fff;
+  font-family:Arial, sans-serif;
+}
+
+h3 { color:#00e5ff; }
+
+input, textarea, button {
+  width:100%;
+  margin:6px 0;
+  padding:8px;
+  background:#000;
+  color:#fff;
+  border:1px solid #333;
+}
+
+#videoBox {
+  position:relative;
+  margin-top:10px;
+}
+
+#video {
+  width:100%;
+}
+
+/* controls */
+#centerControls {
+  position:absolute;
+  top:60%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  display:flex;
+  gap:10px;
+  z-index:10;
+}
+
+.hidden { display:none !important; }
+
+.ctrlBtn {
+  background:rgba(0,0,0,0.5);
+  color:#00e5ff;
+  border:1px solid #00e5ff;
+  border-radius:50%;
+  width:52px;
+  height:52px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+#toggleBtn {
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  width:40px;
+  height:40px;
+  border-radius:50%;
+  background:#000;
+  color:#00e5ff;
+  border:1px solid #00e5ff;
+}
+
+/* grid */
+#buttons {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+  gap:8px;
+}
+
+.rangeBtn.active {
+  background:#00e5ff;
+  color:#000;
+}
+</style>
+</head>
+
+<body>
+
+<h3>Offline Timestamp Player</h3>
+
+<input type="file" id="fileInput" accept="video/*">
+<textarea id="ranges"></textarea>
+<button onclick="loadVideo()">Load</button>
+
+<div id="videoBox">
+  <video id="video" controls></video>
+
+  <div id="centerControls">
+    <div class="ctrlBtn" onclick="seek(-45)">-45</div>
+    <div class="ctrlBtn" onclick="seek(-30)">-30</div>
+    <div class="ctrlBtn" onclick="seek(-15)">-15</div>
+
+    <div class="ctrlBtn" onclick="prevSegment()">⏮</div>
+    <div class="ctrlBtn" onclick="nextSegment()">⏭</div>
+
+    <div class="ctrlBtn" onclick="seek(15)">+15</div>
+    <div class="ctrlBtn" onclick="seek(30)">+30</div>
+    <div class="ctrlBtn" onclick="seek(45)">+45</div>
+  </div>
+
+  <div id="toggleBtn" onclick="toggleControls()">☰</div>
+</div>
+
+<div id="buttons"></div>
+
+<script>
+let video=document.getElementById("video");
+let controls=document.getElementById("centerControls");
+let manualHidden=false, timeout;
+
+let segments=[], index=-1, fileName="";
+
+/* ---------- LOAD ---------- */
+
+function loadVideo(){
+  let file=document.getElementById("fileInput").files[0];
+  if(!file) return;
+
+  fileName=file.name;
+  video.src=URL.createObjectURL(file);
+
+  video.onloadedmetadata=()=>{
+    video.playbackRate=2;
+
+    restoreLastState();
+
+    /* auto play fix */
+    video.play().catch(()=>{});
+
+    /* auto fullscreen */
+    if(video.requestFullscreen){
+      video.requestFullscreen().catch(()=>{});
+    }
+  };
+
+  parseSegments();
+}
+
+/* ---------- SEGMENTS ---------- */
+
+function parseSegments(){
+  segments=[];
+  let lines=document.getElementById("ranges").value.split("\n");
+  lines.forEach(l=>{
+    if(!l.includes("-")) return;
+    let p=l.split("-");
+    segments.push([toSec(p[0]),toSec(p[1])]);
+  });
+}
+
+function toSec(t){
+  let p=t.trim().split(":").map(Number);
+  return p[0]*3600+p[1]*60+p[2];
+}
+
+function playFrom(i){
+  index=i;
+  playCurrent();
+}
+
+function playCurrent(){
+  if(index<0||index>=segments.length) return;
+  video.currentTime=segments[index][0];
+  video.play();
+}
+
+video.addEventListener("timeupdate",()=>{
+  saveProgress();
+
+  if(index>=0 && video.currentTime>=segments[index][1]){
+    index++;
+    if(index<segments.length) playCurrent();
+  }
+});
+
+/* ---------- SEEK ---------- */
+
+function seek(s){
+  video.currentTime=Math.max(0,video.currentTime+s);
+}
+
+/* ---------- NAV ---------- */
+
+function prevSegment(){
+  if(index>0){ index--; playCurrent(); }
+}
+
+function nextSegment(){
+  if(index<segments.length-1){ index++; playCurrent(); }
+}
+
+/* ---------- CONTROLS ---------- */
+
+function toggleControls(){
+  manualHidden=!manualHidden;
+  controls.classList.toggle("hidden",manualHidden);
+}
+
+video.addEventListener("click",()=>{
+  if(!manualHidden){
+    controls.classList.remove("hidden");
+    clearTimeout(timeout);
+    timeout=setTimeout(()=>controls.classList.add("hidden"),2000);
+  }
+});
+
+/* ---------- RESUME ---------- */
+
+function saveProgress(){
+  localStorage.setItem("state",JSON.stringify({
+    name:fileName,
+    t:video.currentTime,
+    i:index,
+    r:document.getElementById("ranges").value
+  }));
+}
+
+function restoreLastState(){
+  let d=JSON.parse(localStorage.getItem("state")||"null");
+  if(!d||d.name!==fileName) return;
+
+  index=d.i;
+  video.currentTime=d.t;
+  document.getElementById("ranges").value=d.r;
+}
+</script>
+
+</body>
+  </html>
