@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>YouTube Timestamp Player</title>
+
+<style>
+body {
+  margin:0;
+  padding:10px;
+  background:#000;
+  color:#fff;
+  font-family:Arial;
+}
+
+input, textarea, button {
+  width:100%;
+  margin:5px 0;
+  padding:8px;
+  background:#000;
+  color:#fff;
+  border:1px solid #333;
+}
+
+#playerBox {
+  position:relative;
+}
+
+#player {
+  width:100%;
+  aspect-ratio:16/9;
+}
+
+/* controls */
+#controls {
+  position:absolute;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  display:flex;
+  gap:8px;
+}
+
+.ctrlBtn {
+  width:46px;
+  height:46px;
+  border-radius:50%;
+  background:rgba(0,0,0,0.6);
+  color:#00e5ff;
+  border:1px solid #00e5ff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+/* timestamp grid */
+#buttons {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+  gap:6px;
+}
+
+.rangeBtn.active {
+  background:#00e5ff;
+  color:#000;
+}
+
+.historyItem {
+  padding:6px;
+  border:1px solid #222;
+  margin-top:5px;
+}
+</style>
+</head>
+
+<body>
+
+<input id="ytLink" placeholder="Paste YouTube link">
+<textarea id="ranges" placeholder="00:00:00 - 00:05:00"></textarea>
+<button onclick="loadYT()">Load</button>
+
+<div id="playerBox">
+  <div id="player"></div>
+
+  <div id="controls">
+    <div class="ctrlBtn" onclick="seek(-60)">-60</div>
+    <div class="ctrlBtn" onclick="seek(-30)">-30</div>
+    <div class="ctrlBtn" onclick="seek(-15)">-15</div>
+
+    <div class="ctrlBtn" onclick="prevSeg()">⏮</div>
+    <div class="ctrlBtn" onclick="nextSeg()">⏭</div>
+
+    <div class="ctrlBtn" onclick="seek(15)">+15</div>
+    <div class="ctrlBtn" onclick="seek(30)">+30</div>
+    <div class="ctrlBtn" onclick="seek(60)">+60</div>
+  </div>
+</div>
+
+<div id="buttons"></div>
+
+<h3>History</h3>
+<div id="history"></div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+
+<script>
+let player;
+let segments=[];
+let index=-1;
+let videoId="";
+
+/* extract id */
+function getId(url){
+  let m=url.match(/(?:v=|youtu\.be\/)([^&]+)/);
+  return m?m[1]:null;
+}
+
+/* load */
+function loadYT(){
+  let url=document.getElementById("ytLink").value;
+  videoId=getId(url);
+  if(!videoId) return alert("Invalid link");
+
+  segments=[];
+  index=-1;
+
+  parseSegments();
+  makeButtons();
+  saveHistory(url);
+
+  if(player){
+    player.loadVideoById(videoId);
+  } else {
+    player=new YT.Player('player',{
+      videoId:videoId,
+      events:{ onReady:onReady }
+    });
+  }
+}
+
+function onReady(){
+  player.setPlaybackRate(2);
+}
+
+/* segments */
+function parseSegments(){
+  let lines=document.getElementById("ranges").value.split("\n");
+  lines.forEach(l=>{
+    if(!l.includes("-")) return;
+    let p=l.split("-");
+    segments.push([toSec(p[0]),toSec(p[1]),l]);
+  });
+}
+
+function toSec(t){
+  let p=t.trim().split(":").map(Number);
+  return p[0]*3600+p[1]*60+p[2];
+}
+
+/* play */
+function playFrom(i){
+  index=i;
+  player.seekTo(segments[i][0],true);
+  player.playVideo();
+}
+
+/* auto next */
+setInterval(()=>{
+  if(index<0||!player.getCurrentTime) return;
+
+  let t=player.getCurrentTime();
+  if(t>=segments[index][1]){
+    index++;
+    if(index<segments.length){
+      playFrom(index);
+    }
+  }
+},500);
+
+/* controls */
+function seek(s){
+  player.seekTo(player.getCurrentTime()+s,true);
+}
+
+function prevSeg(){ if(index>0) playFrom(--index); }
+function nextSeg(){ if(index<segments.length-1) playFrom(++index); }
+
+/* buttons */
+function makeButtons(){
+  let box=document.getElementById("buttons");
+  box.innerHTML="";
+  segments.forEach((s,i)=>{
+    let b=document.createElement("button");
+    b.textContent=s[2];
+    b.className="rangeBtn";
+    b.onclick=()=>playFrom(i);
+    box.appendChild(b);
+  });
+}
+
+/* history */
+function saveHistory(url){
+  let data=JSON.parse(localStorage.getItem("ytHist")||"[]");
+  data.unshift({url:url,ranges:document.getElementById("ranges").value});
+  if(data.length>10) data.length=10;
+  localStorage.setItem("ytHist",JSON.stringify(data));
+  renderHistory();
+}
+
+function renderHistory(){
+  let box=document.getElementById("history");
+  box.innerHTML="";
+  let data=JSON.parse(localStorage.getItem("ytHist")||"[]");
+
+  data.forEach(d=>{
+    let div=document.createElement("div");
+    div.className="historyItem";
+    div.textContent=d.url;
+    div.onclick=()=>{
+      document.getElementById("ytLink").value=d.url;
+      document.getElementById("ranges").value=d.ranges;
+    };
+    box.appendChild(div);
+  });
+}
+
+renderHistory();
+</script>
+
+</body>
+</html>
