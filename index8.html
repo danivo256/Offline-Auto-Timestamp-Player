@@ -36,7 +36,7 @@ textarea { min-height:110px; }
   background:#000;
 }
 
-/* CONTROLS */
+/* CENTER CONTROLS */
 #centerControls {
   position:absolute;
   top:60%;
@@ -45,11 +45,8 @@ textarea { min-height:110px; }
   display:flex;
   gap:14px;
   z-index:10;
-}
-
-/* hidden state */
-.hidden {
-  display:none !important;
+  opacity:1;
+  transition:opacity 0.25s;
 }
 
 .ctrlBtn {
@@ -75,7 +72,7 @@ textarea { min-height:110px; }
   transform:scale(1.1);
 }
 
-/* TOGGLE BUTTON */
+/* 🔥 TOGGLE BUTTON (RIGHT MIDDLE) */
 #toggleBtn {
   position:absolute;
   right:10px;
@@ -197,9 +194,9 @@ function loadVideo(){
   let file=document.getElementById("fileInput").files[0];
   if(!file){ alert("Select a video file"); return; }
 
-  fileName=file.name;
-  video.src=URL.createObjectURL(file);
-  video.playbackRate=2;
+  fileName = file.name; // ✅ FIXED filename
+  video.src = URL.createObjectURL(file);
+  video.playbackRate = 2;
 
   segments=[];
   index=-1;
@@ -267,23 +264,11 @@ function nextSegment(){
   if(index<segments.length-1){ index++; playCurrent(); }
 }
 
-/* 🔥 TOGGLE */
+/* 🔥 TOGGLE CONTROLS */
 function toggleControls(){
   controlsVisible = !controlsVisible;
-  controls.classList.toggle("hidden", !controlsVisible);
+  controls.style.display = controlsVisible ? "flex" : "none";
 }
-
-/* TAP TO SHOW TEMP */
-video.addEventListener("click", ()=>{
-  controls.classList.remove("hidden");
-  clearTimeout(timeout);
-
-  timeout = setTimeout(()=>{
-    if(!controlsVisible){
-      controls.classList.add("hidden");
-    }
-  }, 2000);
-});
 
 /* RESUME */
 function saveProgress(){
@@ -339,7 +324,9 @@ function renderHistory(){
 }
 
 /* FULLSCREEN FIX */
-document.addEventListener("fullscreenchange", ()=>{
+document.addEventListener("fullscreenchange", handleFullscreen);
+
+function handleFullscreen(){
   let isFull = document.fullscreenElement === video;
 
   if(isFull){
@@ -354,11 +341,12 @@ document.addEventListener("fullscreenchange", ()=>{
     controls.style.position="absolute";
     controls.style.top="60%";
     controls.style.left="50%";
+    controls.style.transform="translate(-50%,-50%)";
   }
-});
+}
 
 renderHistory();
 </script>
 
 </body>
-  </html>
+</html>
