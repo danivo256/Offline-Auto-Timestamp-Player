@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>YouTube Timestamp Player</title>
+<title>Offline Timestamp Player</title>
 
 <style>
 body {
@@ -13,6 +13,7 @@ body {
   font-family:Arial;
 }
 
+/* inputs */
 input, textarea, button {
   width:100%;
   margin:5px 0;
@@ -22,79 +23,149 @@ input, textarea, button {
   border:1px solid #333;
 }
 
-#playerBox {
+#videoBox {
   position:relative;
 }
 
-#player {
+#video {
   width:100%;
-  aspect-ratio:16/9;
 }
 
-/* controls */
-#controls {
+/* 🔥 CENTER CONTROLS */
+#centerControls {
   position:absolute;
   top:50%;
   left:50%;
   transform:translate(-50%,-50%);
   display:flex;
-  gap:8px;
+  gap:16px; /* ~1cm spacing feel */
+  z-index:10;
 }
 
+.hidden { display:none !important; }
+
+/* 🔥 NEON BUTTONS */
 .ctrlBtn {
-  width:46px;
-  height:46px;
+  width:52px;
+  height:52px;
   border-radius:50%;
   background:rgba(0,0,0,0.6);
+  color:#00e5ff;
+  border:1px solid rgba(0,229,255,0.6);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:12px;
+  box-shadow:0 0 8px rgba(0,229,255,0.4);
+  cursor:pointer;
+  transition:0.2s;
+}
+
+.ctrlBtn:hover {
+  background:#00e5ff;
+  color:#000;
+  box-shadow:0 0 15px #00e5ff;
+}
+
+/* 🔥 TOGGLE BUTTON */
+#toggleBtn {
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  width:40px;
+  height:40px;
+  border-radius:50%;
+  background:rgba(0,0,0,0.7);
   color:#00e5ff;
   border:1px solid #00e5ff;
   display:flex;
   align-items:center;
   justify-content:center;
-  cursor:pointer;
+  font-size:18px;
+  z-index:20;
 }
 
-/* timestamp grid */
+/* 🔥 EXIT FULLSCREEN */
+#exitFS {
+  position:absolute;
+  top:10px;
+  right:10px;
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  background:rgba(0,0,0,0.7);
+  color:#00e5ff;
+  border:1px solid #00e5ff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:14px;
+  z-index:30;
+}
+
+/* 🔥 TIMESTAMP BUTTONS (RESTORED STYLE) */
 #buttons {
   display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
-  gap:6px;
+  grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:10px;
+  margin-top:12px;
+}
+
+.rangeBtn {
+  padding:8px;
+  border:1px solid #444;
+  background:#0a0a0a;
+  color:#ddd;
+  border-radius:6px;
+  text-align:center;
+  font-size:13px;
+  cursor:pointer;
 }
 
 .rangeBtn.active {
   background:#00e5ff;
   color:#000;
+  font-weight:bold;
+  border:2px solid #fff;
+  box-shadow:0 0 12px #00e5ff;
 }
 
+/* history */
 .historyItem {
+  margin-top:6px;
   padding:6px;
   border:1px solid #222;
-  margin-top:5px;
 }
 </style>
 </head>
 
 <body>
 
-<input id="ytLink" placeholder="Paste YouTube link">
-<textarea id="ranges" placeholder="00:00:00 - 00:05:00"></textarea>
-<button onclick="loadYT()">Load</button>
+<input type="file" id="fileInput" accept="video/*">
+<textarea id="ranges"></textarea>
+<button onclick="loadVideo()">Load</button>
 
-<div id="playerBox">
-  <div id="player"></div>
+<div id="videoBox">
+  <video id="video" controls></video>
 
-  <div id="controls">
+  <div id="centerControls">
     <div class="ctrlBtn" onclick="seek(-60)">-60</div>
+    <div class="ctrlBtn" onclick="seek(-45)">-45</div>
     <div class="ctrlBtn" onclick="seek(-30)">-30</div>
     <div class="ctrlBtn" onclick="seek(-15)">-15</div>
 
-    <div class="ctrlBtn" onclick="prevSeg()">⏮</div>
-    <div class="ctrlBtn" onclick="nextSeg()">⏭</div>
+    <div class="ctrlBtn" onclick="prevSegment()">⏮</div>
+    <div class="ctrlBtn" onclick="nextSegment()">⏭</div>
 
     <div class="ctrlBtn" onclick="seek(15)">+15</div>
     <div class="ctrlBtn" onclick="seek(30)">+30</div>
+    <div class="ctrlBtn" onclick="seek(45)">+45</div>
     <div class="ctrlBtn" onclick="seek(60)">+60</div>
   </div>
+
+  <div id="toggleBtn" onclick="toggleControls()">≡</div>
+  <div id="exitFS" onclick="exitFS()">⤫</div>
 </div>
 
 <div id="buttons"></div>
@@ -102,54 +173,58 @@ input, textarea, button {
 <h3>History</h3>
 <div id="history"></div>
 
-<script src="https://www.youtube.com/iframe_api"></script>
-
 <script>
-let player;
-let segments=[];
-let index=-1;
-let videoId="";
+let video=document.getElementById("video");
+let controls=document.getElementById("centerControls");
+let exitBtn=document.getElementById("exitFS");
+let videoBox=document.getElementById("videoBox");
 
-/* extract id */
-function getId(url){
-  let m=url.match(/(?:v=|youtu\.be\/)([^&]+)/);
-  return m?m[1]:null;
-}
+let segments=[], index=-1, fileName="";
+let timeout, manualHidden=false;
 
-/* load */
-function loadYT(){
-  let url=document.getElementById("ytLink").value;
-  videoId=getId(url);
-  if(!videoId) return alert("Invalid link");
+/* LOAD */
+function loadVideo(){
+  let file=document.getElementById("fileInput").files[0];
+  if(!file) return;
 
-  segments=[];
-  index=-1;
+  fileName=file.name;
+  video.src=URL.createObjectURL(file);
+
+  video.onloadedmetadata=()=>{
+    video.playbackRate=2;
+    restore();
+
+    setTimeout(()=>video.play().catch(()=>{}),200);
+
+    videoBox.requestFullscreen().catch(()=>{});
+    if(screen.orientation?.lock) screen.orientation.lock("landscape").catch(()=>{});
+  };
 
   parseSegments();
   makeButtons();
-  saveHistory(url);
-
-  if(player){
-    player.loadVideoById(videoId);
-  } else {
-    player=new YT.Player('player',{
-      videoId:videoId,
-      events:{ onReady:onReady }
-    });
-  }
+  saveHistory();
 }
 
-function onReady(){
-  player.setPlaybackRate(2);
-}
-
-/* segments */
+/* SEGMENTS */
 function parseSegments(){
+  segments=[];
   let lines=document.getElementById("ranges").value.split("\n");
-  lines.forEach(l=>{
+  lines.forEach((l)=>{
     if(!l.includes("-")) return;
     let p=l.split("-");
     segments.push([toSec(p[0]),toSec(p[1]),l]);
+  });
+}
+
+function makeButtons(){
+  let box=document.getElementById("buttons");
+  box.innerHTML="";
+  segments.forEach((s,i)=>{
+    let b=document.createElement("button");
+    b.className="rangeBtn";
+    b.textContent=s[2];
+    b.onclick=()=>playFrom(i);
+    box.appendChild(b);
   });
 }
 
@@ -158,68 +233,103 @@ function toSec(t){
   return p[0]*3600+p[1]*60+p[2];
 }
 
-/* play */
-function playFrom(i){
-  index=i;
-  player.seekTo(segments[i][0],true);
-  player.playVideo();
+/* PLAY */
+function playFrom(i){ index=i; playCurrent(); }
+function playCurrent(){
+  if(index<0||index>=segments.length) return;
+  video.currentTime=segments[index][0];
+  video.play();
 }
 
-/* auto next */
-setInterval(()=>{
-  if(index<0||!player.getCurrentTime) return;
+/* AUTO NEXT */
+video.addEventListener("timeupdate",()=>{
+  save();
 
-  let t=player.getCurrentTime();
-  if(t>=segments[index][1]){
+  if(index>=0 && video.currentTime>=segments[index][1]){
     index++;
-    if(index<segments.length){
-      playFrom(index);
-    }
+    if(index<segments.length) playCurrent();
   }
-},500);
+});
 
-/* controls */
+/* SEEK */
 function seek(s){
-  player.seekTo(player.getCurrentTime()+s,true);
+  video.currentTime=Math.max(0,video.currentTime+s);
 }
 
-function prevSeg(){ if(index>0) playFrom(--index); }
-function nextSeg(){ if(index<segments.length-1) playFrom(++index); }
+/* NAV */
+function prevSegment(){ if(index>0){ index--; playCurrent(); } }
+function nextSegment(){ if(index<segments.length-1){ index++; playCurrent(); } }
 
-/* buttons */
-function makeButtons(){
-  let box=document.getElementById("buttons");
-  box.innerHTML="";
-  segments.forEach((s,i)=>{
-    let b=document.createElement("button");
-    b.textContent=s[2];
-    b.className="rangeBtn";
-    b.onclick=()=>playFrom(i);
-    box.appendChild(b);
-  });
+/* CONTROLS */
+function toggleControls(){
+  manualHidden=!manualHidden;
+  updateControls();
 }
 
-/* history */
-function saveHistory(url){
-  let data=JSON.parse(localStorage.getItem("ytHist")||"[]");
-  data.unshift({url:url,ranges:document.getElementById("ranges").value});
+function updateControls(){
+  controls.classList.toggle("hidden",manualHidden);
+  exitBtn.classList.toggle("hidden",manualHidden);
+}
+
+/* TAP SHOW */
+video.addEventListener("click",()=>{
+  if(!manualHidden){
+    controls.classList.remove("hidden");
+    exitBtn.classList.remove("hidden");
+
+    clearTimeout(timeout);
+    timeout=setTimeout(()=>{
+      controls.classList.add("hidden");
+      exitBtn.classList.add("hidden");
+    },2000);
+  }
+});
+
+/* EXIT FULLSCREEN */
+function exitFS(){
+  document.exitFullscreen();
+}
+
+/* RESUME */
+function save(){
+  localStorage.setItem("state",JSON.stringify({
+    n:fileName,
+    t:video.currentTime,
+    i:index,
+    r:document.getElementById("ranges").value
+  }));
+}
+
+function restore(){
+  let d=JSON.parse(localStorage.getItem("state")||"null");
+  if(!d||d.n!==fileName) return;
+
+  index=d.i;
+  video.currentTime=d.t;
+  document.getElementById("ranges").value=d.r;
+}
+
+/* HISTORY */
+function saveHistory(){
+  let data=JSON.parse(localStorage.getItem("hist")||"[]");
+  data.unshift({name:fileName,ranges:document.getElementById("ranges").value});
   if(data.length>10) data.length=10;
-  localStorage.setItem("ytHist",JSON.stringify(data));
+  localStorage.setItem("hist",JSON.stringify(data));
   renderHistory();
 }
 
 function renderHistory(){
   let box=document.getElementById("history");
   box.innerHTML="";
-  let data=JSON.parse(localStorage.getItem("ytHist")||"[]");
+  let data=JSON.parse(localStorage.getItem("hist")||"[]");
 
   data.forEach(d=>{
     let div=document.createElement("div");
     div.className="historyItem";
-    div.textContent=d.url;
+    div.innerHTML="<b>"+d.name+"</b>";
     div.onclick=()=>{
-      document.getElementById("ytLink").value=d.url;
       document.getElementById("ranges").value=d.ranges;
+      alert("Select same file again");
     };
     box.appendChild(div);
   });
