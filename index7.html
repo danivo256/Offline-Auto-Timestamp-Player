@@ -45,7 +45,7 @@ textarea { min-height:110px; }
   display:flex;
   gap:14px;
   z-index:10;
-  opacity:0;
+  opacity:1;
   transition:opacity 0.25s;
 }
 
@@ -150,6 +150,12 @@ let index = -1;
 let fileName = "";
 let timeout;
 
+/* CLEAN FILE NAME */
+function getCleanFileName(file){
+  if(!file) return "Unknown";
+  return file.name.replace(/^.*[\\/]/, '');
+}
+
 /* CORE */
 
 function toSeconds(t){
@@ -171,7 +177,7 @@ function loadVideo(){
   let file=document.getElementById("fileInput").files[0];
   if(!file){ alert("Select a video file"); return; }
 
-  fileName=file.name; // ✅ correct name
+  fileName = getCleanFileName(file);
 
   video.src=URL.createObjectURL(file);
   video.playbackRate=2;
@@ -279,7 +285,13 @@ function saveHistory(){
 
   let data=JSON.parse(localStorage.getItem("offline_ts")||"[]");
   data=data.filter(d=>!(d.name===fileName && d.ranges===ranges));
-  data.unshift({name:fileName,ranges:ranges,time:Date.now()});
+
+  data.unshift({
+    name:fileName,
+    ranges:ranges,
+    time:Date.now()
+  });
+
   if(data.length>15) data.length=15;
 
   localStorage.setItem("offline_ts",JSON.stringify(data));
@@ -303,7 +315,7 @@ function renderHistory(){
   });
 }
 
-/* 🔥 AUTO HIDE CONTROLS */
+/* CONTROLS (TOUCH FIX) */
 
 function showControls(){
   controls.style.opacity = "1";
@@ -311,20 +323,21 @@ function showControls(){
 
   timeout = setTimeout(()=>{
     if(!document.fullscreenElement){
-      controls.style.opacity = "0";
+      controls.style.opacity = "0.2";
     }
   },2000);
 }
 
 video.addEventListener("mousemove", showControls);
-video.addEventListener("click", showControls);
+video.addEventListener("touchstart", showControls);
+videoBox.addEventListener("touchstart", showControls);
 
 /* FULLSCREEN */
 document.addEventListener("fullscreenchange", ()=>{
   if(document.fullscreenElement){
     controls.style.opacity = "1";
   } else {
-    controls.style.opacity = "0";
+    showControls();
   }
 });
 
@@ -332,4 +345,4 @@ renderHistory();
 </script>
 
 </body>
-  </html>
+</html>
