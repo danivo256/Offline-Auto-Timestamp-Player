@@ -26,18 +26,18 @@ input, textarea, button {
 
 textarea { min-height:110px; }
 
-#videoBoxElement {
+#videoBox {
   position:relative;
   margin-top:10px;
 }
 
-#videoElement {
+#video {
   width:100%;
   background:#000;
 }
 
 /* CONTROLS */
-#centerControlsElement {
+#centerControls {
   position:absolute;
   top:60%;
   left:50%;
@@ -52,7 +52,7 @@ textarea { min-height:110px; }
   display:none !important;
 }
 
-.controlButton {
+.ctrlBtn {
   background:rgba(0,0,0,0.5);
   color:#00e5ff;
   border:1px solid rgba(0,229,255,0.6);
@@ -68,15 +68,15 @@ textarea { min-height:110px; }
   transition:all 0.2s ease;
 }
 
-.controlButton:hover {
+.ctrlBtn:hover {
   background:#00e5ff;
   color:#000;
   box-shadow:0 0 16px #00e5ff;
   transform:scale(1.1);
 }
 
-/* HIDE BUTTON */
-#hideControlsButton {
+/* TOGGLE BUTTON */
+#toggleBtn {
   position:absolute;
   right:10px;
   top:50%;
@@ -96,14 +96,14 @@ textarea { min-height:110px; }
 }
 
 /* GRID */
-#buttonsContainer {
+#buttons {
   display:grid;
   grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
   gap:8px;
   margin-top:12px;
 }
 
-.rangeButton {
+.rangeBtn {
   background:#0a0a0a;
   color:#ddd;
   border:1px solid #444;
@@ -115,7 +115,7 @@ textarea { min-height:110px; }
   cursor:pointer;
 }
 
-.rangeButton.active {
+.rangeBtn.active {
   background:#00e5ff;
   color:#000;
   font-weight:bold;
@@ -123,7 +123,7 @@ textarea { min-height:110px; }
   box-shadow:0 0 12px #00e5ff;
 }
 
-.historyItemDiv {
+.historyItem {
   margin-top:6px;
   padding:8px;
   border:1px solid #222;
@@ -137,260 +137,222 @@ textarea { min-height:110px; }
 
 <h3>Offline Timestamp Player</h3>
 
-<input type="file" id="fileInputElement" accept="video/*">
+<input type="file" id="fileInput" accept="video/*">
 
-<textarea id="timestampRangesTextarea" placeholder=
+<textarea id="ranges" placeholder=
 "00:00:00 - 00:05:00
 00:06:00 - 00:10:00"></textarea>
 
-<button onclick="loadVideoFile()">Load Video</button>
+<button onclick="loadVideo()">Load Video</button>
 
-<div id="videoBoxElement">
-  <video id="videoElement" controls></video>
+<div id="videoBox">
+  <video id="video" controls></video>
 
-  <div id="centerControlsElement">
-    <div class="controlButton" onclick="seekVideoTime(-30)">-30</div>
-    <div class="controlButton" onclick="seekVideoTime(-10)">-10</div>
-    <div class="controlButton" onclick="playPreviousSegment()">⏮</div>
-    <div class="controlButton" onclick="playNextSegment()">⏭</div>
-    <div class="controlButton" onclick="seekVideoTime(10)">+10</div>
-    <div class="controlButton" onclick="seekVideoTime(30)">+30</div>
+  <div id="centerControls">
+    <div class="ctrlBtn" onclick="seek(-30)">-30</div>
+    <div class="ctrlBtn" onclick="seek(-10)">-10</div>
+    <div class="ctrlBtn" onclick="prevSegment()">⏮</div>
+    <div class="ctrlBtn" onclick="nextSegment()">⏭</div>
+    <div class="ctrlBtn" onclick="seek(10)">+10</div>
+    <div class="ctrlBtn" onclick="seek(30)">+30</div>
   </div>
 
-  <div id="hideControlsButton" onclick="hideCenterControls()">✖</div>
+  <div id="toggleBtn" onclick="toggleControls()">☰</div>
 </div>
 
-<div id="buttonsContainer"></div>
+<div id="buttons"></div>
 
 <h3>History</h3>
-<div id="historyContainer"></div>
+<div id="history"></div>
 
 <script>
-let videoElement = document.getElementById("videoElement");
-let centerControlsElement = document.getElementById("centerControlsElement");
-let videoBoxElement = document.getElementById("videoBoxElement");
-let controlsTimeoutIdentifier;
+let video = document.getElementById("video");
+let controls = document.getElementById("centerControls");
+let videoBox = document.getElementById("videoBox");
 
-let videoSegmentsArray = [];
-let currentSegmentIndexNumber = -1;
-let uploadedFileNameString = "";
+let segments = [];
+let index = -1;
+let fileName = "";
+let timeout;
+let controlsVisible = true;
 
 /* CORE */
-function convertTimeStringToSeconds(timeStringParameter){
-  let timePartsArray = timeStringParameter.trim().split(":").map(Number);
-  return timePartsArray[0] * 3600 + timePartsArray[1] * 60 + timePartsArray[2];
+
+function toSeconds(t){
+  let p=t.trim().split(":").map(Number);
+  return p[0]*3600+p[1]*60+p[2];
 }
 
-function clearAllButtonHighlights(){
-  document.querySelectorAll(".rangeButton").forEach(buttonElement => buttonElement.classList.remove("active"));
+function clearHighlight(){
+  document.querySelectorAll(".rangeBtn").forEach(b=>b.classList.remove("active"));
 }
 
-function highlightActiveSegmentButton(buttonIndexNumber){
-  clearAllButtonHighlights();
-  let targetButtonElement = document.querySelectorAll(".rangeButton")[buttonIndexNumber];
-  if(targetButtonElement) {
-      targetButtonElement.classList.add("active");
-  }
+function highlight(i){
+  clearHighlight();
+  let b=document.querySelectorAll(".rangeBtn")[i];
+  if(b) b.classList.add("active");
 }
 
-function loadVideoFile(){
-  let selectedVideoFileObject = document.getElementById("fileInputElement").files[0];
-  if(!selectedVideoFileObject){ 
-      alert("Select a video file"); 
-      return; 
-  }
+function loadVideo(){
+  let file=document.getElementById("fileInput").files[0];
+  if(!file){ alert("Select a video file"); return; }
 
-  uploadedFileNameString = selectedVideoFileObject.name;
-  videoElement.src = URL.createObjectURL(selectedVideoFileObject);
-  videoElement.playbackRate = 2;
+  fileName=file.name;
+  video.src=URL.createObjectURL(file);
+  video.playbackRate=2;
 
-  videoSegmentsArray = [];
-  currentSegmentIndexNumber = -1;
+  segments=[];
+  index=-1;
 
-  let timestampLinesArray = document.getElementById("timestampRangesTextarea").value.trim().split("\n");
-  timestampLinesArray.forEach(currentLineString => {
-    if(!currentLineString.includes("-")) return;
-    let splitTimeLineArray = currentLineString.split("-");
-    videoSegmentsArray.push([
-        convertTimeStringToSeconds(splitTimeLineArray[0]),
-        convertTimeStringToSeconds(splitTimeLineArray[1]),
-        currentLineString.trim()
-    ]);
+  let lines=document.getElementById("ranges").value.trim().split("\n");
+  lines.forEach(l=>{
+    if(!l.includes("-")) return;
+    let p=l.split("-");
+    segments.push([toSeconds(p[0]),toSeconds(p[1]),l.trim()]);
   });
 
-  createRangeButtonsInDOM();
-  restoreLastVideoStateFromStorage();
-  saveVideoHistoryToStorage();
+  makeButtons();
+  restoreLastState();
+  saveHistory();
 }
 
-function createRangeButtonsInDOM(){
-  let buttonsContainerElement = document.getElementById("buttonsContainer");
-  buttonsContainerElement.innerHTML = "";
-  videoSegmentsArray.forEach((segmentDataArray, segmentIndexNumber) => {
-    let newButtonElement = document.createElement("button");
-    newButtonElement.className = "rangeButton";
-    newButtonElement.textContent = segmentDataArray[2];
-    newButtonElement.onclick = () => playVideoFromSpecificIndex(segmentIndexNumber);
-    buttonsContainerElement.appendChild(newButtonElement);
+function makeButtons(){
+  let box=document.getElementById("buttons");
+  box.innerHTML="";
+  segments.forEach((s,i)=>{
+    let b=document.createElement("button");
+    b.className="rangeBtn";
+    b.textContent=s[2];
+    b.onclick=()=>playFrom(i);
+    box.appendChild(b);
   });
 }
 
-function playVideoFromSpecificIndex(segmentIndexNumber){
-  currentSegmentIndexNumber = segmentIndexNumber;
-  playCurrentVideoSegment();
+function playFrom(i){
+  index=i;
+  playCurrent();
 }
 
-function playCurrentVideoSegment(){
-  if(currentSegmentIndexNumber < 0 || currentSegmentIndexNumber >= videoSegmentsArray.length) return;
-  highlightActiveSegmentButton(currentSegmentIndexNumber);
-  videoElement.currentTime = videoSegmentsArray[currentSegmentIndexNumber][0];
-  videoElement.play();
+function playCurrent(){
+  if(index<0||index>=segments.length) return;
+  highlight(index);
+  video.currentTime=segments[index][0];
+  video.play();
 }
 
-videoElement.addEventListener("timeupdate", () => {
-  saveVideoProgressToStorage();
-  if(currentSegmentIndexNumber < 0 || currentSegmentIndexNumber >= videoSegmentsArray.length) return;
+video.addEventListener("timeupdate",()=>{
+  saveProgress();
+  if(index<0||index>=segments.length) return;
 
-  if(videoElement.currentTime >= videoSegmentsArray[currentSegmentIndexNumber][1]){
-    videoElement.pause();
-    currentSegmentIndexNumber++;
-    if(currentSegmentIndexNumber < videoSegmentsArray.length){
-      setTimeout(playCurrentVideoSegment, 200);
+  if(video.currentTime>=segments[index][1]){
+    video.pause();
+    index++;
+    if(index<segments.length){
+      setTimeout(playCurrent,200);
     }
   }
 });
 
 /* SEEK */
-function seekVideoTime(secondsToSeekNumber){
-  videoElement.currentTime = Math.max(0, videoElement.currentTime + secondsToSeekNumber);
+function seek(sec){
+  video.currentTime = Math.max(0, video.currentTime + sec);
 }
 
 /* NAV */
-function playPreviousSegment(){
-  if(currentSegmentIndexNumber > 0){ 
-      currentSegmentIndexNumber--; 
-      playCurrentVideoSegment(); 
-  }
+function prevSegment(){
+  if(index>0){ index--; playCurrent(); }
 }
 
-function playNextSegment(){
-  if(currentSegmentIndexNumber < videoSegmentsArray.length - 1){ 
-      currentSegmentIndexNumber++; 
-      playCurrentVideoSegment(); 
-  }
+function nextSegment(){
+  if(index<segments.length-1){ index++; playCurrent(); }
 }
 
-/* 🔥 HIDE CONTROLS */
-function hideCenterControls(){
-  centerControlsElement.classList.add("hidden");
-  clearTimeout(controlsTimeoutIdentifier);
+/* 🔥 TOGGLE */
+function toggleControls(){
+  controlsVisible = !controlsVisible;
+  controls.classList.toggle("hidden", !controlsVisible);
 }
 
-function showCenterControlsTemporarily(){
-  centerControlsElement.classList.remove("hidden");
-  clearTimeout(controlsTimeoutIdentifier);
-  
-  controlsTimeoutIdentifier = setTimeout(() => {
-    centerControlsElement.classList.add("hidden");
-  }, 2000);
-}
-
-/* TAP TO SHOW TEMP */
-videoElement.addEventListener("click", showCenterControlsTemporarily);
+/* HIDE ON CLICK */
+video.addEventListener("click", ()=>{
+  controlsVisible = false;
+  controls.classList.add("hidden");
+});
 
 /* RESUME */
-function saveVideoProgressToStorage(){
-  if(!uploadedFileNameString) return;
-  localStorage.setItem("offline_last_state", JSON.stringify({
-    name: uploadedFileNameString,
-    time: videoElement.currentTime,
-    index: currentSegmentIndexNumber,
-    ranges: document.getElementById("timestampRangesTextarea").value.trim()
+function saveProgress(){
+  if(!fileName) return;
+  localStorage.setItem("offline_last_state",JSON.stringify({
+    name:fileName,
+    time:video.currentTime,
+    index:index,
+    ranges:document.getElementById("ranges").value.trim()
   }));
 }
 
-function restoreLastVideoStateFromStorage(){
-  let savedStateDataParsed = JSON.parse(localStorage.getItem("offline_last_state") || "null");
-  if(!savedStateDataParsed) return;
-  
-  let savedFileNameString = savedStateDataParsed.name || savedStateDataParsed.fileNameSaved;
-  if(savedFileNameString !== uploadedFileNameString) return;
+function restoreLastState(){
+  let data=JSON.parse(localStorage.getItem("offline_last_state")||"null");
+  if(!data) return;
+  if(data.name!==fileName) return;
 
-  document.getElementById("timestampRangesTextarea").value = savedStateDataParsed.ranges || savedStateDataParsed.timestampRangesSaved;
-  currentSegmentIndexNumber = savedStateDataParsed.index !== undefined ? savedStateDataParsed.index : savedStateDataParsed.segmentIndexSaved;
-  highlightActiveSegmentButton(currentSegmentIndexNumber);
-  videoElement.currentTime = savedStateDataParsed.time !== undefined ? savedStateDataParsed.time : savedStateDataParsed.currentTimeSaved;
+  document.getElementById("ranges").value=data.ranges;
+  index=data.index;
+  highlight(index);
+  video.currentTime=data.time;
 }
 
 /* HISTORY */
-function saveVideoHistoryToStorage(){
-  let currentTimestampRangesString = document.getElementById("timestampRangesTextarea").value.trim();
-  if(!currentTimestampRangesString) return;
+function saveHistory(){
+  let ranges=document.getElementById("ranges").value.trim();
+  if(!ranges) return;
 
-  let videoHistoryArray = JSON.parse(localStorage.getItem("offline_ts") || "[]");
-  
-  videoHistoryArray = videoHistoryArray.filter(historyEntryObject => {
-      let entryNameString = historyEntryObject.name || historyEntryObject.fileNameSaved;
-      let entryRangesString = historyEntryObject.ranges || historyEntryObject.timestampRangesSaved;
-      return !(entryNameString === uploadedFileNameString && entryRangesString === currentTimestampRangesString);
-  });
-  
-  videoHistoryArray.unshift({
-      name: uploadedFileNameString, 
-      ranges: currentTimestampRangesString
-  });
-  
-  if(videoHistoryArray.length > 15) {
-      videoHistoryArray.length = 15;
-  }
+  let data=JSON.parse(localStorage.getItem("offline_ts")||"[]");
+  data=data.filter(d=>!(d.name===fileName && d.ranges===ranges));
+  data.unshift({name:fileName,ranges:ranges});
+  if(data.length>15) data.length=15;
 
-  localStorage.setItem("offline_ts", JSON.stringify(videoHistoryArray));
-  renderVideoHistoryToDOM();
+  localStorage.setItem("offline_ts",JSON.stringify(data));
+  renderHistory();
 }
 
-function renderVideoHistoryToDOM(){
-  let historyContainerElement = document.getElementById("historyContainer");
-  historyContainerElement.innerHTML = "";
-  let videoHistoryArray = JSON.parse(localStorage.getItem("offline_ts") || "[]");
+function renderHistory(){
+  let box=document.getElementById("history");
+  box.innerHTML="";
+  let data=JSON.parse(localStorage.getItem("offline_ts")||"[]");
 
-  videoHistoryArray.forEach(historyEntryObject => {
-    let displayFileNameString = historyEntryObject.name || historyEntryObject.fileNameSaved;
-    let displayRangesString = historyEntryObject.ranges || historyEntryObject.timestampRangesSaved;
-
-    if(displayFileNameString) {
-        let historyItemDivElement = document.createElement("div");
-        historyItemDivElement.className = "historyItemDiv";
-        historyItemDivElement.innerHTML = "<b>" + displayFileNameString + "</b>";
-        historyItemDivElement.onclick = () => {
-          document.getElementById("timestampRangesTextarea").value = displayRangesString;
-          alert("Select the same file again");
-        };
-        historyContainerElement.appendChild(historyItemDivElement);
-    }
+  data.forEach(d=>{
+    let div=document.createElement("div");
+    div.className="historyItem";
+    div.innerHTML="<b>"+d.name+"</b>";
+    div.onclick=()=>{
+      document.getElementById("ranges").value=d.ranges;
+      alert("Select the same file again");
+    };
+    box.appendChild(div);
   });
 }
 
 /* FULLSCREEN FIX */
-document.addEventListener("fullscreenchange", () => {
-  let isVideoFullscreenBoolean = document.fullscreenElement === videoElement;
+document.addEventListener("fullscreenchange", ()=>{
+  let isFull = document.fullscreenElement === video;
 
-  if(isVideoFullscreenBoolean){
-    document.body.appendChild(centerControlsElement);
-    centerControlsElement.style.position = "fixed";
-    centerControlsElement.style.top = "60%";
-    centerControlsElement.style.left = "50%";
-    centerControlsElement.style.transform = "translate(-50%,-50%)";
-    centerControlsElement.style.zIndex = "9999";
+  if(isFull){
+    document.body.appendChild(controls);
+    controls.style.position="fixed";
+    controls.style.top="60%";
+    controls.style.left="50%";
+    controls.style.transform="translate(-50%,-50%)";
+    controls.style.zIndex="9999";
   } else {
-    videoBoxElement.appendChild(centerControlsElement);
-    centerControlsElement.style.position = "absolute";
-    centerControlsElement.style.top = "60%";
-    centerControlsElement.style.left = "50%";
+    videoBox.appendChild(controls);
+    controls.style.position="absolute";
+    controls.style.top="60%";
+    controls.style.left="50%";
   }
 });
 
-renderVideoHistoryToDOM();
+renderHistory();
 </script>
 
 </body>
-</html>
+  </html>
