@@ -52,7 +52,7 @@ textarea { min-height:110px; }
   display:none !important;
 }
 
-.ctrlBtn {
+.controlButton {
   background:rgba(0,0,0,0.5);
   color:#00e5ff;
   border:1px solid rgba(0,229,255,0.6);
@@ -68,7 +68,7 @@ textarea { min-height:110px; }
   transition:all 0.2s ease;
 }
 
-.ctrlBtn:hover {
+.controlButton:hover {
   background:#00e5ff;
   color:#000;
   box-shadow:0 0 16px #00e5ff;
@@ -76,7 +76,7 @@ textarea { min-height:110px; }
 }
 
 /* HIDE BUTTON */
-#hideButton {
+#hideControlsButton {
   position:absolute;
   right:10px;
   top:50%;
@@ -96,14 +96,14 @@ textarea { min-height:110px; }
 }
 
 /* GRID */
-#buttons {
+#buttonsContainer {
   display:grid;
   grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
   gap:8px;
   margin-top:12px;
 }
 
-.rangeBtn {
+.rangeButton {
   background:#0a0a0a;
   color:#ddd;
   border:1px solid #444;
@@ -115,7 +115,7 @@ textarea { min-height:110px; }
   cursor:pointer;
 }
 
-.rangeBtn.active {
+.rangeButton.active {
   background:#00e5ff;
   color:#000;
   font-weight:bold;
@@ -123,7 +123,7 @@ textarea { min-height:110px; }
   box-shadow:0 0 12px #00e5ff;
 }
 
-.historyItem {
+.historyItemDiv {
   margin-top:6px;
   padding:8px;
   border:1px solid #222;
@@ -137,9 +137,9 @@ textarea { min-height:110px; }
 
 <h3>Offline Timestamp Player</h3>
 
-<input type="file" id="fileInput" accept="video/*">
+<input type="file" id="fileInputElement" accept="video/*">
 
-<textarea id="ranges" placeholder=
+<textarea id="timestampRangesTextarea" placeholder=
 "00:00:00 - 00:05:00
 00:06:00 - 00:10:00"></textarea>
 
@@ -149,132 +149,133 @@ textarea { min-height:110px; }
   <video id="videoElement" controls></video>
 
   <div id="centerControlsElement">
-    <div class="ctrlBtn" onclick="seekVideoTime(-30)">-30</div>
-    <div class="ctrlBtn" onclick="seekVideoTime(-10)">-10</div>
-    <div class="ctrlBtn" onclick="playPreviousSegment()">⏮</div>
-    <div class="ctrlBtn" onclick="playNextSegment()">⏭</div>
-    <div class="ctrlBtn" onclick="seekVideoTime(10)">+10</div>
-    <div class="ctrlBtn" onclick="seekVideoTime(30)">+30</div>
+    <div class="controlButton" onclick="seekVideoTime(-30)">-30</div>
+    <div class="controlButton" onclick="seekVideoTime(-10)">-10</div>
+    <div class="controlButton" onclick="playPreviousSegment()">⏮</div>
+    <div class="controlButton" onclick="playNextSegment()">⏭</div>
+    <div class="controlButton" onclick="seekVideoTime(10)">+10</div>
+    <div class="controlButton" onclick="seekVideoTime(30)">+30</div>
   </div>
 
-  <div id="hideButton" onclick="hideCenterControls()">✖</div>
+  <div id="hideControlsButton" onclick="hideCenterControls()">✖</div>
 </div>
 
-<div id="buttons"></div>
+<div id="buttonsContainer"></div>
 
 <h3>History</h3>
-<div id="history"></div>
+<div id="historyContainer"></div>
 
 <script>
 let videoElement = document.getElementById("videoElement");
 let centerControlsElement = document.getElementById("centerControlsElement");
 let videoBoxElement = document.getElementById("videoBoxElement");
+let controlsTimeoutIdentifier;
 
 let videoSegmentsArray = [];
-let currentSegmentIndex = -1;
-let uploadedFileName = "";
+let currentSegmentIndexNumber = -1;
+let uploadedFileNameString = "";
 
 /* CORE */
-function convertTimeToSeconds(timeString){
-  let timePartsArray = timeString.trim().split(":").map(Number);
+function convertTimeStringToSeconds(timeStringParameter){
+  let timePartsArray = timeStringParameter.trim().split(":").map(Number);
   return timePartsArray[0] * 3600 + timePartsArray[1] * 60 + timePartsArray[2];
 }
 
-function clearButtonHighlights(){
-  document.querySelectorAll(".rangeBtn").forEach(buttonElement => buttonElement.classList.remove("active"));
+function clearAllButtonHighlights(){
+  document.querySelectorAll(".rangeButton").forEach(buttonElement => buttonElement.classList.remove("active"));
 }
 
-function highlightActiveButton(buttonIndex){
-  clearButtonHighlights();
-  let targetButtonElement = document.querySelectorAll(".rangeBtn")[buttonIndex];
+function highlightActiveSegmentButton(buttonIndexNumber){
+  clearAllButtonHighlights();
+  let targetButtonElement = document.querySelectorAll(".rangeButton")[buttonIndexNumber];
   if(targetButtonElement) {
       targetButtonElement.classList.add("active");
   }
 }
 
 function loadVideoFile(){
-  let selectedVideoFile = document.getElementById("fileInput").files[0];
-  if(!selectedVideoFile){ 
+  let selectedVideoFileObject = document.getElementById("fileInputElement").files[0];
+  if(!selectedVideoFileObject){ 
       alert("Select a video file"); 
       return; 
   }
 
-  uploadedFileName = selectedVideoFile.name;
-  videoElement.src = URL.createObjectURL(selectedVideoFile);
+  uploadedFileNameString = selectedVideoFileObject.name;
+  videoElement.src = URL.createObjectURL(selectedVideoFileObject);
   videoElement.playbackRate = 2;
 
   videoSegmentsArray = [];
-  currentSegmentIndex = -1;
+  currentSegmentIndexNumber = -1;
 
-  let timestampLinesArray = document.getElementById("ranges").value.trim().split("\n");
+  let timestampLinesArray = document.getElementById("timestampRangesTextarea").value.trim().split("\n");
   timestampLinesArray.forEach(currentLineString => {
     if(!currentLineString.includes("-")) return;
     let splitTimeLineArray = currentLineString.split("-");
     videoSegmentsArray.push([
-        convertTimeToSeconds(splitTimeLineArray[0]),
-        convertTimeToSeconds(splitTimeLineArray[1]),
+        convertTimeStringToSeconds(splitTimeLineArray[0]),
+        convertTimeStringToSeconds(splitTimeLineArray[1]),
         currentLineString.trim()
     ]);
   });
 
-  createRangeButtons();
-  restoreLastVideoState();
-  saveVideoHistory();
+  createRangeButtonsInDOM();
+  restoreLastVideoStateFromStorage();
+  saveVideoHistoryToStorage();
 }
 
-function createRangeButtons(){
-  let buttonsContainerElement = document.getElementById("buttons");
+function createRangeButtonsInDOM(){
+  let buttonsContainerElement = document.getElementById("buttonsContainer");
   buttonsContainerElement.innerHTML = "";
   videoSegmentsArray.forEach((segmentDataArray, segmentIndexNumber) => {
     let newButtonElement = document.createElement("button");
-    newButtonElement.className = "rangeBtn";
+    newButtonElement.className = "rangeButton";
     newButtonElement.textContent = segmentDataArray[2];
-    newButtonElement.onclick = () => playVideoFromIndex(segmentIndexNumber);
+    newButtonElement.onclick = () => playVideoFromSpecificIndex(segmentIndexNumber);
     buttonsContainerElement.appendChild(newButtonElement);
   });
 }
 
-function playVideoFromIndex(segmentIndexNumber){
-  currentSegmentIndex = segmentIndexNumber;
+function playVideoFromSpecificIndex(segmentIndexNumber){
+  currentSegmentIndexNumber = segmentIndexNumber;
   playCurrentVideoSegment();
 }
 
 function playCurrentVideoSegment(){
-  if(currentSegmentIndex < 0 || currentSegmentIndex >= videoSegmentsArray.length) return;
-  highlightActiveButton(currentSegmentIndex);
-  videoElement.currentTime = videoSegmentsArray[currentSegmentIndex][0];
+  if(currentSegmentIndexNumber < 0 || currentSegmentIndexNumber >= videoSegmentsArray.length) return;
+  highlightActiveSegmentButton(currentSegmentIndexNumber);
+  videoElement.currentTime = videoSegmentsArray[currentSegmentIndexNumber][0];
   videoElement.play();
 }
 
 videoElement.addEventListener("timeupdate", () => {
-  saveVideoProgress();
-  if(currentSegmentIndex < 0 || currentSegmentIndex >= videoSegmentsArray.length) return;
+  saveVideoProgressToStorage();
+  if(currentSegmentIndexNumber < 0 || currentSegmentIndexNumber >= videoSegmentsArray.length) return;
 
-  if(videoElement.currentTime >= videoSegmentsArray[currentSegmentIndex][1]){
+  if(videoElement.currentTime >= videoSegmentsArray[currentSegmentIndexNumber][1]){
     videoElement.pause();
-    currentSegmentIndex++;
-    if(currentSegmentIndex < videoSegmentsArray.length){
+    currentSegmentIndexNumber++;
+    if(currentSegmentIndexNumber < videoSegmentsArray.length){
       setTimeout(playCurrentVideoSegment, 200);
     }
   }
 });
 
 /* SEEK */
-function seekVideoTime(secondsToSeek){
-  videoElement.currentTime = Math.max(0, videoElement.currentTime + secondsToSeek);
+function seekVideoTime(secondsToSeekNumber){
+  videoElement.currentTime = Math.max(0, videoElement.currentTime + secondsToSeekNumber);
 }
 
 /* NAV */
 function playPreviousSegment(){
-  if(currentSegmentIndex > 0){ 
-      currentSegmentIndex--; 
+  if(currentSegmentIndexNumber > 0){ 
+      currentSegmentIndexNumber--; 
       playCurrentVideoSegment(); 
   }
 }
 
 function playNextSegment(){
-  if(currentSegmentIndex < videoSegmentsArray.length - 1){ 
-      currentSegmentIndex++; 
+  if(currentSegmentIndexNumber < videoSegmentsArray.length - 1){ 
+      currentSegmentIndexNumber++; 
       playCurrentVideoSegment(); 
   }
 }
@@ -282,50 +283,61 @@ function playNextSegment(){
 /* 🔥 HIDE CONTROLS */
 function hideCenterControls(){
   centerControlsElement.classList.add("hidden");
+  clearTimeout(controlsTimeoutIdentifier);
 }
 
-function showCenterControls(){
+function showCenterControlsTemporarily(){
   centerControlsElement.classList.remove("hidden");
+  clearTimeout(controlsTimeoutIdentifier);
+  
+  controlsTimeoutIdentifier = setTimeout(() => {
+    centerControlsElement.classList.add("hidden");
+  }, 2000);
 }
 
-/* TAP TO SHOW */
-videoElement.addEventListener("click", showCenterControls);
+/* TAP TO SHOW TEMP */
+videoElement.addEventListener("click", showCenterControlsTemporarily);
 
 /* RESUME */
-function saveVideoProgress(){
-  if(!uploadedFileName) return;
+function saveVideoProgressToStorage(){
+  if(!uploadedFileNameString) return;
   localStorage.setItem("offline_last_state", JSON.stringify({
-    fileNameSaved: uploadedFileName,
-    currentTimeSaved: videoElement.currentTime,
-    segmentIndexSaved: currentSegmentIndex,
-    timestampRangesSaved: document.getElementById("ranges").value.trim()
+    name: uploadedFileNameString,
+    time: videoElement.currentTime,
+    index: currentSegmentIndexNumber,
+    ranges: document.getElementById("timestampRangesTextarea").value.trim()
   }));
 }
 
-function restoreLastVideoState(){
-  let savedStateData = JSON.parse(localStorage.getItem("offline_last_state") || "null");
-  if(!savedStateData) return;
-  if(savedStateData.fileNameSaved !== uploadedFileName) return;
+function restoreLastVideoStateFromStorage(){
+  let savedStateDataParsed = JSON.parse(localStorage.getItem("offline_last_state") || "null");
+  if(!savedStateDataParsed) return;
+  
+  let savedFileNameString = savedStateDataParsed.name || savedStateDataParsed.fileNameSaved;
+  if(savedFileNameString !== uploadedFileNameString) return;
 
-  document.getElementById("ranges").value = savedStateData.timestampRangesSaved;
-  currentSegmentIndex = savedStateData.segmentIndexSaved;
-  highlightActiveButton(currentSegmentIndex);
-  videoElement.currentTime = savedStateData.currentTimeSaved;
+  document.getElementById("timestampRangesTextarea").value = savedStateDataParsed.ranges || savedStateDataParsed.timestampRangesSaved;
+  currentSegmentIndexNumber = savedStateDataParsed.index !== undefined ? savedStateDataParsed.index : savedStateDataParsed.segmentIndexSaved;
+  highlightActiveSegmentButton(currentSegmentIndexNumber);
+  videoElement.currentTime = savedStateDataParsed.time !== undefined ? savedStateDataParsed.time : savedStateDataParsed.currentTimeSaved;
 }
 
 /* HISTORY */
-function saveVideoHistory(){
-  let currentTimestampRanges = document.getElementById("ranges").value.trim();
-  if(!currentTimestampRanges) return;
+function saveVideoHistoryToStorage(){
+  let currentTimestampRangesString = document.getElementById("timestampRangesTextarea").value.trim();
+  if(!currentTimestampRangesString) return;
 
   let videoHistoryArray = JSON.parse(localStorage.getItem("offline_ts") || "[]");
-  videoHistoryArray = videoHistoryArray.filter(historyEntryObject => 
-      !(historyEntryObject.fileNameSaved === uploadedFileName && historyEntryObject.timestampRangesSaved === currentTimestampRanges)
-  );
+  
+  videoHistoryArray = videoHistoryArray.filter(historyEntryObject => {
+      let entryNameString = historyEntryObject.name || historyEntryObject.fileNameSaved;
+      let entryRangesString = historyEntryObject.ranges || historyEntryObject.timestampRangesSaved;
+      return !(entryNameString === uploadedFileNameString && entryRangesString === currentTimestampRangesString);
+  });
   
   videoHistoryArray.unshift({
-      fileNameSaved: uploadedFileName, 
-      timestampRangesSaved: currentTimestampRanges
+      name: uploadedFileNameString, 
+      ranges: currentTimestampRangesString
   });
   
   if(videoHistoryArray.length > 15) {
@@ -333,31 +345,36 @@ function saveVideoHistory(){
   }
 
   localStorage.setItem("offline_ts", JSON.stringify(videoHistoryArray));
-  renderVideoHistory();
+  renderVideoHistoryToDOM();
 }
 
-function renderVideoHistory(){
-  let historyContainerElement = document.getElementById("history");
+function renderVideoHistoryToDOM(){
+  let historyContainerElement = document.getElementById("historyContainer");
   historyContainerElement.innerHTML = "";
   let videoHistoryArray = JSON.parse(localStorage.getItem("offline_ts") || "[]");
 
   videoHistoryArray.forEach(historyEntryObject => {
-    let historyItemDivElement = document.createElement("div");
-    historyItemDivElement.className = "historyItem";
-    historyItemDivElement.innerHTML = "<b>" + historyEntryObject.fileNameSaved + "</b>";
-    historyItemDivElement.onclick = () => {
-      document.getElementById("ranges").value = historyEntryObject.timestampRangesSaved;
-      alert("Select the same file again");
-    };
-    historyContainerElement.appendChild(historyItemDivElement);
+    let displayFileNameString = historyEntryObject.name || historyEntryObject.fileNameSaved;
+    let displayRangesString = historyEntryObject.ranges || historyEntryObject.timestampRangesSaved;
+
+    if(displayFileNameString) {
+        let historyItemDivElement = document.createElement("div");
+        historyItemDivElement.className = "historyItemDiv";
+        historyItemDivElement.innerHTML = "<b>" + displayFileNameString + "</b>";
+        historyItemDivElement.onclick = () => {
+          document.getElementById("timestampRangesTextarea").value = displayRangesString;
+          alert("Select the same file again");
+        };
+        historyContainerElement.appendChild(historyItemDivElement);
+    }
   });
 }
 
 /* FULLSCREEN FIX */
 document.addEventListener("fullscreenchange", () => {
-  let isVideoFullscreen = document.fullscreenElement === videoElement;
+  let isVideoFullscreenBoolean = document.fullscreenElement === videoElement;
 
-  if(isVideoFullscreen){
+  if(isVideoFullscreenBoolean){
     document.body.appendChild(centerControlsElement);
     centerControlsElement.style.position = "fixed";
     centerControlsElement.style.top = "60%";
@@ -372,7 +389,7 @@ document.addEventListener("fullscreenchange", () => {
   }
 });
 
-renderVideoHistory();
+renderVideoHistoryToDOM();
 </script>
 
 </body>
